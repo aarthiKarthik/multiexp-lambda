@@ -1,0 +1,4 @@
+/home/parallels/multiexp-lambda/aws-lambda-cpp/multiexp/build/CMakeFiles/rebuild_cache.dir
+/home/parallels/multiexp-lambda/aws-lambda-cpp/multiexp/build/CMakeFiles/edit_cache.dir
+/home/parallels/multiexp-lambda/aws-lambda-cpp/multiexp/build/CMakeFiles/multiexp.dir
+/home/parallels/multiexp-lambda/aws-lambda-cpp/multiexp/build/CMakeFiles/aws-lambda-package-multiexp.dir

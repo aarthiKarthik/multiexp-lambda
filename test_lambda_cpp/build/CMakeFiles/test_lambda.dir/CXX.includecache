@@ -1,0 +1,34 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/parallels/multiexp-lambda/test_lambda_cpp/test_lambda.cpp
+aws/core/Aws.h
+-
+aws/core/utils/Outcome.h
+-
+aws/core/utils/logging/DefaultLogSystem.h
+-
+aws/core/utils/logging/AWSLogging.h
+-
+aws/core/utils/HashingUtils.h
+-
+aws/lambda/LambdaClient.h
+-
+aws/lambda/model/CreateFunctionRequest.h
+-
+aws/lambda/model/DeleteFunctionRequest.h
+-
+aws/lambda/model/InvokeRequest.h
+-
+aws/lambda/model/ListFunctionsRequest.h
+-
+fstream
+-
+iostream
+-
+

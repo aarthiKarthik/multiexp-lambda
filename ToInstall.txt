@@ -1,0 +1,23 @@
+On Ubuntu 18.04:
+https://aws.amazon.com/blogs/compute/introducing-the-c-lambda-runtime/
+1) sudo apt-get install g++
+2) sudo apt-get install libcurl4-openssl-dev
+3) sudo apt-get install libcurl4-gnutls-dev
+4) sudo apt-get install cmake
+
+5) sudo apt-get install awscli
+6) aws configure --> Enter Access ID and Key, region as us-east-1
+
+7) sudo apt-get install zlib1g-dev
+8) sudo apt-get install libssl-dev
+
+For libff.a:
+https://github.com/scipr-lab/libff
+
+sudo apt-get install build-essential git libboost-all-dev cmake libgmp3-dev libssl-dev libprocps-dev pkg-config
+
+Install libff.a (with Profiling OFF)
+
+Install the ate-pairing submodule, then sudo cp lib/libzm.a /usr/local/lib
+
+

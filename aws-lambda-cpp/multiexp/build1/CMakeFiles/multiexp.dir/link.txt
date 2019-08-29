@@ -1,0 +1,1 @@
+/usr/bin/c++  -O3 -DNDEBUG   CMakeFiles/multiexp.dir/main.cpp.o  -o multiexp -Wl,-rpath,/usr/local/lib -Wl,-Bstatic -lff /home/parallels/out/lib/libaws-lambda-runtime.a -Wl,-Bdynamic -lgmp -Wl,-Bstatic -lzm -Wl,-Bdynamic /usr/lib/x86_64-linux-gnu/libssl.so /usr/local/lib/libaws-cpp-sdk-core.so /usr/lib/x86_64-linux-gnu/libcurl.so /usr/lib/x86_64-linux-gnu/libcrypto.so 
