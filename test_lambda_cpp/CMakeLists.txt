@@ -16,6 +16,7 @@ set (CMAKE_CXX_STANDARD 11)
 
 # Locate the aws sdk for c++ package.
 find_package(AWSSDK REQUIRED COMPONENTS lambda libaws-cpp-sdk-core libaws-cpp-sdk-lambda)
+find_package(OpenSSL REQUIRED)
 add_library(aws-core SHARED IMPORTED)
 set_target_properties(aws-core PROPERTIES IMPORTED_LOCATION "/usr/local/lib/libaws-cpp-sdk-core.so")
 add_library(aws-lambda SHARED IMPORTED)
@@ -31,5 +32,5 @@ foreach(EXAMPLE IN LISTS EXAMPLES)
   target_link_libraries(${EXAMPLE} ${AWSSDK_LINK_LIBRARIES})
 endforeach()
 
-target_link_libraries(${PROJECT_NAME} aws-core aws-lambda)
+target_link_libraries(${PROJECT_NAME} aws-core aws-lambda libff.a gmp libzm.a OpenSSL::SSL)
 

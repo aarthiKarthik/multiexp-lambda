@@ -24,6 +24,61 @@ specific language governing permissions and limitations under the License.
 #include <aws/lambda/model/ListFunctionsRequest.h>
 #include <fstream>
 #include <iostream>
+#include <sstream>
+#include <iterator>
+#include <libff/common/serialization.hpp>
+#include <libff/algebra/fields/bigint.hpp>
+#include <libff/algebra/curves/bn128/bn128_pp.hpp>
+#include <libff/common/utils.hpp>
+#include <libff/common/rng.hpp>
+
+
+using namespace libff;
+
+namespace libff {
+
+   template <typename GroupT>
+using run_result_t = std::pair<long long, std::vector<GroupT> >;
+
+template <typename T>
+using test_instances_t = std::vector<std::vector<T> >;
+
+template<typename GroupT>
+test_instances_t<GroupT> generate_group_elements(size_t count, size_t size)
+{
+    // generating a random group element is expensive,
+    // so for now we only generate a single one and repeat it
+    test_instances_t<GroupT> result(count);
+
+    for (size_t i = 0; i < count; i++) {
+        GroupT x = GroupT::random_element();
+        x.to_special(); // djb requires input to be in special form
+        for (size_t j = 0; j < size; j++) {
+            result[i].push_back(x);
+            // result[i].push_back(GroupT::random_element());
+        }
+    }
+
+    return result;
+}
+
+template<typename FieldT>
+test_instances_t<FieldT> generate_scalars(size_t count, size_t size)
+{
+    // we use SHA512_rng because it is much faster than
+    // FieldT::random_element()
+    test_instances_t<FieldT> result(count);
+
+    for (size_t i = 0; i < count; i++) {
+        for (size_t j = 0; j < size; j++) {
+            result[i].push_back(SHA512_rng<FieldT>(i * size + j));
+        }
+    }
+
+    return result;
+}
+
+} // end libff
 
 static const char* ALLOCATION_TAG = "helloLambdaWorld";
 
@@ -86,18 +141,64 @@ void InvokeFunction(Aws::String functionName)
     invokeRequest.SetInvocationType(Aws::Lambda::Model::InvocationType::RequestResponse);
     invokeRequest.SetLogType(Aws::Lambda::Model::LogType::Tail);
     std::shared_ptr<Aws::IOStream> payload = Aws::MakeShared<Aws::StringStream>("FunctionTest");
+     
+    
+    libff::bn128_pp::init_public_params();
+    size_t expn = 2;
+
+    test_instances_t<G1<libff::bn128_pp>> group_elements =
+            libff::generate_group_elements<G1<libff::bn128_pp>>(10, 1 << expn);
+    test_instances_t<Fr<libff::bn128_pp>> scalars =
+            libff::generate_scalars<Fr<libff::bn128_pp>>(10, 1 << expn);
+
+
     Aws::Utils::Json::JsonValue jsonPayload;
-    jsonPayload.WithString("key1", "value1");
-    jsonPayload.WithString("key2", "value2");
-    jsonPayload.WithString("key3", "value3");
+
+    std::vector<G1<bn128_pp>> answers;
+    printf("size of group elements: %d\n", group_elements.size());
+    for (size_t i = 0; i < group_elements.size(); i++) {
+        std::ostringstream oss;
+
+        //for(size_t j=0; j<group_elements[i].size(); j++) {
+        //        printf("%d %lld ",j, group_elements[i].at(j));fflush(stdout);
+        //}
+        //printf("\n");
+        if (!group_elements[i].empty())
+        {
+                //printf("before serializing: \t%lld\n", group_elements[i].at(2));
+                // Convert all but the last element to avoid a trailing ","
+                std::copy(group_elements[i].begin(), group_elements[i].end()-1,
+                std::ostream_iterator<G1<bn128_pp>>(oss, " "));
+
+                // Now add the last element with no delimiter
+                oss << group_elements[i].back();
+		std::string str = oss.str();
+                if (i==0) {
+			jsonPayload.WithString("group_elements", str.c_str());
+			printf("serialized %s\n", str.c_str());
+		}
+	}
+    }
+    //Aws::Utils::Json::JsonValue jsonPayload;
+    //jsonPayload.WithString("key1", "value1");
+    //jsonPayload.WithString("key2", "value2");
+    //jsonPayload.WithString("key3", "value3");
     *payload << jsonPayload.View().WriteReadable();
     invokeRequest.SetBody(payload);
-    invokeRequest.SetContentType("application/javascript");
+    invokeRequest.SetContentType("application/json");
     auto outcome = m_client->Invoke(invokeRequest);
+    auto &result = outcome.GetResult();
 
+   // Decode the result header to see requested log information 
+        auto byteLogResult = Aws::Utils::HashingUtils::Base64Decode(result.GetLogResult());
+        Aws::StringStream logResult;
+        for (unsigned i = 0; i < byteLogResult.GetLength(); i++)
+            logResult << byteLogResult.GetItem(i);
+        std::cout << "Log result header:\n" << logResult.str() << "\n\n";
+    printf("Outcome is success %d \n", outcome.IsSuccess());
     if (outcome.IsSuccess())
     {
-        auto &result = outcome.GetResult();
+        //auto &result = outcome.GetResult();
 
         // Lambda function result (key1 value)
         Aws::IOStream& payload = result.GetPayload();
@@ -105,12 +206,13 @@ void InvokeFunction(Aws::String functionName)
         std::getline(payload, functionResult);
         std::cout << "Lambda result:\n" << functionResult << "\n\n";
 
-        // Decode the result header to see requested log information 
+        /*// Decode the result header to see requested log information 
         auto byteLogResult = Aws::Utils::HashingUtils::Base64Decode(result.GetLogResult());
         Aws::StringStream logResult;
         for (unsigned i = 0; i < byteLogResult.GetLength(); i++)
             logResult << byteLogResult.GetItem(i);
         std::cout << "Log result header:\n" << logResult.str() << "\n\n";
+        */
     }
 }
 
