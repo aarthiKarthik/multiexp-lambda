@@ -2,13 +2,18 @@
 #include <algorithm>
 #include <cassert>
 #include <type_traits>
+#include <sstream>
+#include <iterator>
+#include <iostream>
 #include <aws/core/Aws.h>
+#include <aws/core/utils/StringUtils.h>
 #include <aws/core/utils/logging/LogLevel.h>
 #include <aws/core/utils/logging/ConsoleLogSystem.h>
 #include <aws/core/utils/logging/LogMacros.h>
 #include <aws/core/utils/json/JsonSerializer.h>
 #include <aws/core/utils/HashingUtils.h>
-
+#include <libff/common/serialization.hpp>
+#include <libff/algebra/fields/bigint.hpp>
 #include <libff/algebra/curves/bn128/bn128_pp.hpp>
 #include <libff/algebra/fields/bigint.hpp>
 #include <libff/algebra/fields/fp_aux.tcc>
@@ -21,7 +26,7 @@
 
 using namespace libff;
 using namespace aws::lambda_runtime;
-
+using namespace Aws::Utils;
 
 namespace libff {
 template<typename T, typename FieldT, multi_exp_method Method,
@@ -185,6 +190,49 @@ test_instances_t<FieldT> generate_scalars(size_t count, size_t size)
 
     return result;
 }
+
+template<typename T>
+T serialize(const T &obj)
+{
+    std::stringstream ss;
+    ss << obj;
+    //T tmp;
+    //ss >> tmp;
+    //assert(obj == tmp);
+    return ss;
+}
+
+/*
+// conversion byte[32] <-> libsnark bigint.
+<bn128_r_limbs> libsnarkBigintFromBytes(const uint8_t* _x)
+{
+  libff::bigint<libff::alt_bn128_r_limbs> x;
+
+  for (unsigned i = 0; i < 4; i++) {
+    for (unsigned j = 0; j < 8; j++) {
+      x.data[3 - i] |= uint64_t(_x[i * 8 + j]) << (8 * (7-j));
+    }
+  }
+  return x;
+}
+
+std::string HexStringFromLibsnarkBigint(libff::bigint<libff::alt_bn128_r_limbs> _x){
+    uint8_t x[32];
+    for (unsigned i = 0; i < 4; i++)
+        for (unsigned j = 0; j < 8; j++)
+                        x[i * 8 + j] = uint8_t(uint64_t(_x.data[3 - i]) >> (8 * (7 - j)));
+
+        std::stringstream ss;
+        ss << std::setfill('0');
+        for (unsigned i = 0; i<32; i++) {
+                ss << std::hex << std::setw(2) << (int)x[i];
+        }
+
+                std:string str = ss.str();
+                return str.erase(0, min(str.find_first_not_of('0'), str.size()-1));
+}
+*/
+
 }
 
 int multi_exp_run()
@@ -199,12 +247,71 @@ int multi_exp_run()
 
    std::vector<G1<bn128_pp>> answers;
    for (size_t i = 0; i < group_elements.size(); i++) {
-        answers.push_back(libff::multi_exp_inner1<G1<bn128_pp>, Fr<bn128_pp>, multi_exp_method_BDLO12, 1>(group_elements[i].cbegin(), group_elements[i].cend(), scalars[i].cbegin(), scalars[i].cend()));
-        printf("\t%lld\n", answers.at(i)); fflush(stdout);
+        std::ostringstream oss;
+
+	for(size_t j=0; j<group_elements[i].size(); j++) {
+		printf("%d %lld ",j, group_elements[i].at(j));fflush(stdout);
+	}
+	printf("\n");
+   	if (!group_elements[i].empty())
+   	{
+		printf("before serializing: \t%lld\n", group_elements[i].at(2));
+     		// Convert all but the last element to avoid a trailing ","
+     		std::copy(group_elements[i].begin(), group_elements[i].end()-1,
+        	std::ostream_iterator<G1<bn128_pp>>(oss, " "));
+
+     		// Now add the last element with no delimiter
+     		oss << group_elements[i].back();
+	}
+
+   	//std::cout << oss.str() << std::endl;
+	std::stringstream iss( oss.str() );
+	printf("Serialized: %s\n", oss.str());
+
+	std::stringstream is( oss.str() );
+	std::vector<G1<bn128_pp>> myNumbers{ std::istream_iterator<G1<bn128_pp>>( is ), std::istream_iterator<G1<bn128_pp>>() };
+	
+	//std::istream_iterator<G1<bn128_pp>>
+	printf("after serializing: \t%lld\n", myNumbers.at(3));
+    
+        answers.push_back(libff::multi_exp_inner1<G1<bn128_pp>, Fr<bn128_pp>, multi_exp_method_BDLO12,
+      1>(group_elements[i].cbegin(), group_elements[i].cend(), scalars[i].cbegin(), scalars[i].cend()));
+        //printf("\t%lld\n", answers.at(i)); fflush(stdout);
    } 
-   printf("\n\n\t%lld\n", answers); fflush(stdout);  
+   //printf("\n\n\t%lld\n", answers); fflush(stdout);  
    
    return answers.size();
+}
+
+
+int test_deserialize(std::string key) {
+	libff::bn128_pp::init_public_params();
+    	/*size_t expn = 2;
+	test_instances_t<G1<libff::bn128_pp>> group_elements =
+            libff::generate_group_elements<G1<libff::bn128_pp>>(10, 1 << expn);
+	std::ostringstream oss;
+    
+        std::string str = "";
+        std::copy(group_elements[0].begin(), group_elements[0].end()-1,
+                std::ostream_iterator<G1<bn128_pp>>(oss, " "));
+
+        // Now add the last element with no delimiter
+        oss << group_elements[0].back();
+	str = oss.str();
+        Aws::String e_str = Aws::Utils::StringUtils::URLEncode(str.c_str());
+	
+        //printf("Serialized: %s\n", key.c_str());
+	//return invocation_response::success(key.c_str(), "application/json");
+	Aws::String d_str = Aws::Utils::StringUtils::URLDecode(e_str.c_str());
+        */
+	std::istringstream is(key.c_str());
+        std::vector<G1<bn128_pp>> myNumbers{ std::istream_iterator<G1<bn128_pp>>( is ), 
+			std::istream_iterator<G1<bn128_pp>>() };
+
+        //std::istream_iterator<G1<bn128_pp>>
+        //printf("after serializing: \t%lld\n", myNumbers.at(3));
+
+	return 3;
 }
 
 
@@ -214,7 +321,7 @@ invocation_response my_handler(invocation_request const& request)
    using namespace Aws::Utils::Json;
     JsonValue json((const Aws::String&)request.payload);
     if (!json.WasParseSuccessful()) {
-        return invocation_response::failure("Failed to parse input JSON", "InvalidJSON");
+        return invocation_response::failure("1Failed to parse input JSON", "InvalidJSON");
     }
 
     auto v = json.View();
@@ -224,12 +331,12 @@ invocation_response my_handler(invocation_request const& request)
         return invocation_response::failure("Missing input value s3bucket or s3key", "InvalidJSON");
     }*/
 
-    if (!v.ValueExists("key1")) {
-        return invocation_response::failure("Failed to parse input JSON", "InvalidJSON");
+    if (!v.ValueExists("groupelements")) {
+        return invocation_response::failure("2Failed to parse input JSON", "InvalidJSON");
     }
 
-    auto key1 = v.GetString("key1");
-    auto key2 = v.GetString("key2");
+    auto key1 = v.GetString("groupelements");
+    //auto key2 = v.GetString("key2");
 
     /*AWS_LOGSTREAM_INFO(TAG, "Attempting to download file from s3://" << bucket << "/" << key);
 
@@ -238,12 +345,13 @@ invocation_response my_handler(invocation_request const& request)
     if (!err.empty()) {
         return invocation_response::failure(err, "DownloadFailure");
     }*/
+   Aws::String d_str = Aws::Utils::StringUtils::URLDecode(key1.c_str()); 
+   int len = test_deserialize(d_str.c_str());
+   //int len = multi_exp_run(key1);
+   //Aws::String d_str = Aws::Utils::StringUtils::URLDecode(key1.c_str());
+   //return invocation_response::success(d_str.c_str(), "application/json");
 
-
-   int len = multi_exp_run();
-   //return invocation_response::success(key1.c_str(), "application/json");
-
-   return invocation_response::success(std::to_string(len).c_str(), "application/json");
+   return invocation_response::success(/*std::to_string(len).c_str()*/"hello", "application/json");
 }
 
 int main()
