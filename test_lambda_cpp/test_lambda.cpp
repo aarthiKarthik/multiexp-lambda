@@ -26,9 +26,12 @@ specific language governing permissions and limitations under the License.
 #include <iostream>
 #include <sstream>
 #include <iterator>
+#include <libff/common/utils.hpp>
 #include <libff/common/serialization.hpp>
+#include <libff/algebra/fields/field_utils.hpp>
 #include <libff/algebra/fields/bigint.hpp>
 #include <libff/algebra/curves/bn128/bn128_pp.hpp>
+#include <libff/algebra/fields/fp.hpp>
 #include <libff/common/utils.hpp>
 #include <libff/common/rng.hpp>
 
@@ -167,6 +170,38 @@ std::string serializeVec(std::vector<T> vec) {
 	return oss.str();
 }
 
+template<typename T>
+std::string serializeFieldVec(std::vector<T> vec) {
+    std::ostringstream oss;
+    libff::bit_vector bv = libff::convert_field_element_vector_to_bit_vector<T>(vec);
+	libff::serialize_bit_vector(oss, bv);
+    return oss.str();
+}
+
+template<typename T>
+std::string serializeField(T field) {
+    std::ostringstream oss;
+    libff::bit_vector bv = libff::convert_field_element_to_bit_vector<T>(field);
+	libff::serialize_bit_vector(oss, bv);
+    return oss.str();
+}
+
+template<typename T>
+std::vector<T> deserializeFieldVec(std::string s_vec) {
+    std::istringstream is(s_vec.c_str());
+    bit_vector bv;
+    libff::deserialize_bit_vector(is, bv);
+    return libff::convert_bit_vector_to_field_element_vector<T>(bv);
+}
+
+template<typename T>
+T deserializeField(std::string s_field) {
+    std::istringstream is(s_field.c_str());
+    bit_vector bv;
+    libff::deserialize_bit_vector(is, bv);
+    return libff::convert_bit_vector_to_field_element<T>((const bit_vector)bv);
+}
+
 // Serialize a single element into a string
 //
 template<typename T> 
@@ -302,16 +337,16 @@ void InvokeMultiExpInner()
     printf("size of group elements: %d\n", group_elements.size());
     for (size_t i = 0; i < group_elements.size(); i++) 
     {
-        std::string ge_ser = serializeVec<G1<bn128_pp>>(group_elements[i]);
+        std::string ge_ser = serializeVec<G1<libff::bn128_pp>>(group_elements[i]);
         Aws::String ge_str = Aws::Utils::StringUtils::URLEncode(ge_ser.c_str());
         jsonPayload.WithString("groupelements", ge_str);
 
-        std::string sc_ser = serializeVec<Fr<bn128_pp>>(scalars[i]);
+        std::string sc_ser = serializeFieldVec<Fr<libff::bn128_pp>>(scalars[i]);
         Aws::String sc_str = Aws::Utils::StringUtils::URLEncode(sc_ser.c_str());
         jsonPayload.WithString("scalars", sc_str);
         
         Aws::String answer = InvokeFunction("multiexp", jsonPayload);
-        answers.push_back(deserialize<G1<bn128_pp>>(answer.c_str()));
+        answers.push_back(deserialize<G1<libff::bn128_pp>>(answer.c_str()));
     }
 
     //Output

@@ -12,9 +12,13 @@
 #include <aws/core/utils/logging/LogMacros.h>
 #include <aws/core/utils/json/JsonSerializer.h>
 #include <aws/core/utils/HashingUtils.h>
+#include <libff/common/utils.hpp>
 #include <libff/common/serialization.hpp>
 #include <libff/algebra/fields/bigint.hpp>
 #include <libff/algebra/curves/bn128/bn128_pp.hpp>
+#include <libff/algebra/fields/fp.hpp>
+#include <libff/algebra/fields/field_utils.hpp>
+#include <libff/algebra/fields/fp.tcc>
 #include <libff/algebra/fields/bigint.hpp>
 #include <libff/algebra/fields/fp_aux.tcc>
 #include <libff/algebra/scalar_multiplication/multiexp.hpp>
@@ -281,6 +285,38 @@ std::string serialize(T elem) {
 	return oss.str();
 }
 
+template<typename T>
+std::string serializeFieldVec(std::vector<T> vec) {
+    std::ostringstream oss;
+    libff::bit_vector bv = libff::convert_field_element_vector_to_bit_vector<T>(vec);
+	libff::serialize_bit_vector(oss, bv);
+    return oss.str();
+}
+
+template<typename T>
+std::string serializeField(T field) {
+    std::ostringstream oss;
+    libff::bit_vector bv = libff::convert_field_element_to_bit_vector<T>(field);
+	libff::serialize_bit_vector(oss, bv);
+    return oss.str();
+}
+
+template<typename T>
+std::vector<T> deserializeFieldVec(std::string s_vec) {
+    std::istringstream is(s_vec.c_str());
+    bit_vector bv;
+    libff::deserialize_bit_vector(is, bv);
+    return libff::convert_bit_vector_to_field_element_vector<T>(bv);
+}
+
+template<typename T>
+T deserializeField(std::string s_field) {
+    std::istringstream is(s_field.c_str());
+    bit_vector bv;
+    libff::deserialize_bit_vector(is, bv);
+    return libff::convert_bit_vector_to_field_element<T>((const bit_vector)bv);
+}
+
 std::string invoke_multiexp_inner(
 	std::vector<G1<bn128_pp>> groupElement,
 	std::vector<Fr<bn128_pp>> scalar)
@@ -367,8 +403,12 @@ invocation_response multiexp_inner_handler(invocation_request const& request)
 		deserializeToVec<Fr<bn128_pp>>(sc_d_str.c_str());
 	std::string answer = 
 		invoke_multiexp_inner(groupelements, scalars);
-	deserialize<G1<bn128_pp>>("56");
-	serialize<G1<bn128_pp>>(groupelements.at(0));
+	//deserialize<Fr<bn128_pp>>("56");
+	//serialize<Fr<bn128_pp>>(scalars.at(0));
+	//std::ostringstream oss;
+	//std::string str = "";
+	//libff::serialize_bit_vector(oss, libff::convert_field_element_to_bit_vector(scalars.at(0)));
+    //std::cout << libff::bn128_Fr(scalars.at(0));
     return invocation_response::success(answer.c_str(), "application/json");
 }
 
