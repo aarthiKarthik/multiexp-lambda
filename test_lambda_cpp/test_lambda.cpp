@@ -153,11 +153,13 @@ void InvokeFunction(Aws::String functionName)
 
 
     Aws::Utils::Json::JsonValue jsonPayload;
-
+    std::ostringstream oss;
+    //std::ostream_iterator<G1<bn128_pp>>(oss, " ");
+    std::string str = "";
     std::vector<G1<bn128_pp>> answers;
     printf("size of group elements: %d\n", group_elements.size());
     for (size_t i = 0; i < group_elements.size(); i++) {
-        std::ostringstream oss;
+        //std::ostringstream oss;
 
         //for(size_t j=0; j<group_elements[i].size(); j++) {
         //        printf("%d %lld ",j, group_elements[i].at(j));fflush(stdout);
@@ -172,10 +174,29 @@ void InvokeFunction(Aws::String functionName)
 
                 // Now add the last element with no delimiter
                 oss << group_elements[i].back();
-		std::string str = oss.str();
+		//std::string str = oss.str();
                 if (i==0) {
-			jsonPayload.WithString("group_elements", str.c_str());
-			printf("serialized %s\n", str.c_str());
+			for (int k=0;k<group_elements[i].size();k++)
+				printf("%lld ",group_elements[i].at(k));
+			std::cout << "\n";
+			str = oss.str();
+			Aws::String e_str = Aws::Utils::StringUtils::URLEncode(str.c_str());
+			jsonPayload.WithString("groupelements", e_str);//oss.str());
+				//Aws::Utils::StringUtils::to_string<const char*>(str.c_str()));
+			//printf("serialized %s\n", str.c_str());
+			std::cout << "serialized: " << str.c_str() << "\n";
+			//std::cout << "encoded   : " << e_str << "\n";
+			//std::cout << "decoded   : " << 
+			//	Aws::Utils::StringUtils::URLDecode(e_str.c_str()) << "\n";
+			// Testing code to check serial and deserial
+			//std::stringstream is(str.c_str());
+        		//std::vector<G1<bn128_pp>> myNumbers{ 
+			//	std::istream_iterator<G1<bn128_pp>>( is ), 
+        	        //        std::istream_iterator<G1<bn128_pp>>() };
+			//for (int k=0;k<myNumbers.size();k++)
+                        //        printf("%lld ", myNumbers.at(k));
+                        //std::cout << "\n";
+			
 		}
 	}
     }
@@ -184,17 +205,22 @@ void InvokeFunction(Aws::String functionName)
     //jsonPayload.WithString("key2", "value2");
     //jsonPayload.WithString("key3", "value3");
     *payload << jsonPayload.View().WriteReadable();
+    //auto sstream = std::make_shared<std::stringstream>();
+    //sstream->write(str.c_str(), str.size());
+    //...
+    //invokeRequest.SetBody(sstream);
+
     invokeRequest.SetBody(payload);
-    invokeRequest.SetContentType("application/json");
+    invokeRequest.SetContentType("application/text");
     auto outcome = m_client->Invoke(invokeRequest);
     auto &result = outcome.GetResult();
 
    // Decode the result header to see requested log information 
-        auto byteLogResult = Aws::Utils::HashingUtils::Base64Decode(result.GetLogResult());
-        Aws::StringStream logResult;
-        for (unsigned i = 0; i < byteLogResult.GetLength(); i++)
-            logResult << byteLogResult.GetItem(i);
-        std::cout << "Log result header:\n" << logResult.str() << "\n\n";
+        //auto byteLogResult = Aws::Utils::HashingUtils::Base64Decode(result.GetLogResult());
+        //Aws::StringStream logResult;
+        //for (unsigned i = 0; i < byteLogResult.GetLength(); i++)
+        //    logResult << byteLogResult.GetItem(i);
+        //std::cout << "Log result header:\n" << logResult.str() << "\n\n";
     printf("Outcome is success %d \n", outcome.IsSuccess());
     if (outcome.IsSuccess())
     {
@@ -285,7 +311,7 @@ int main(int argc, char **argv)
         //CreateFunction(functionName, functionHandler, functionRuntime,
                        //functionRoleARN, functionZipFile);
 
-        ListFunctions();
+        //ListFunctions();
 
         InvokeFunction(functionName);
 	InvokeFunction(functionName);
