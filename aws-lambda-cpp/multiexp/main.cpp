@@ -190,49 +190,6 @@ test_instances_t<FieldT> generate_scalars(size_t count, size_t size)
 
     return result;
 }
-
-template<typename T>
-T serialize(const T &obj)
-{
-    std::stringstream ss;
-    ss << obj;
-    //T tmp;
-    //ss >> tmp;
-    //assert(obj == tmp);
-    return ss;
-}
-
-/*
-// conversion byte[32] <-> libsnark bigint.
-<bn128_r_limbs> libsnarkBigintFromBytes(const uint8_t* _x)
-{
-  libff::bigint<libff::alt_bn128_r_limbs> x;
-
-  for (unsigned i = 0; i < 4; i++) {
-    for (unsigned j = 0; j < 8; j++) {
-      x.data[3 - i] |= uint64_t(_x[i * 8 + j]) << (8 * (7-j));
-    }
-  }
-  return x;
-}
-
-std::string HexStringFromLibsnarkBigint(libff::bigint<libff::alt_bn128_r_limbs> _x){
-    uint8_t x[32];
-    for (unsigned i = 0; i < 4; i++)
-        for (unsigned j = 0; j < 8; j++)
-                        x[i * 8 + j] = uint8_t(uint64_t(_x.data[3 - i]) >> (8 * (7 - j)));
-
-        std::stringstream ss;
-        ss << std::setfill('0');
-        for (unsigned i = 0; i<32; i++) {
-                ss << std::hex << std::setw(2) << (int)x[i];
-        }
-
-                std:string str = ss.str();
-                return str.erase(0, min(str.find_first_not_of('0'), str.size()-1));
-}
-*/
-
 }
 
 int multi_exp_run()
@@ -276,46 +233,84 @@ int multi_exp_run()
     
         answers.push_back(libff::multi_exp_inner1<G1<bn128_pp>, Fr<bn128_pp>, multi_exp_method_BDLO12,
       1>(group_elements[i].cbegin(), group_elements[i].cend(), scalars[i].cbegin(), scalars[i].cend()));
-        //printf("\t%lld\n", answers.at(i)); fflush(stdout);
    } 
-   //printf("\n\n\t%lld\n", answers); fflush(stdout);  
    
    return answers.size();
 }
 
+// Deserialize a string into a vector
+//
+template<typename T>
+std::vector<T> deserializeToVec(std::string s_vec) {
+	std::istringstream is(s_vec.c_str());
+        return std::vector<T>{ std::istream_iterator<T>( is ), 
+                        std::istream_iterator<T>() };
+}
+
+// Deserialize a string into a single element
+//
+template<typename T>
+T deserialize(std::string s_elem) {
+	T ret;
+	std::istringstream is(s_elem.c_str());
+    is >> ret;
+	return ret;
+}
+
+// Serialize a vector into a string
+//
+template<typename T> 
+std::string serializeVec(std::vector<T> vec) {
+	std::ostringstream oss;
+	std::string str = "";
+	std::copy(vec.begin(), vec.end()-1,
+                std::ostream_iterator<T>(oss, " "));
+
+        // Now add the last element with no delimiter
+        oss << vec.back();
+	return oss.str();
+}
+
+// Serialize a single element into a string
+//
+template<typename T> 
+std::string serialize(T elem) {
+	std::ostringstream oss;
+	std::string str = "";
+    oss << elem;
+	return oss.str();
+}
+
+std::string invoke_multiexp_inner(
+	std::vector<G1<bn128_pp>> groupElement,
+	std::vector<Fr<bn128_pp>> scalar)
+{
+	G1<bn128_pp> answer = 
+	multi_exp_inner1<G1<bn128_pp>,
+					 Fr<bn128_pp>,
+					 multi_exp_method_BDLO12,
+					 1>
+					 (groupElement.cbegin(),
+					 groupElement.cend(),
+					 scalar.cbegin(),
+					 scalar.cend());
+	return serialize<G1<bn128_pp>>(answer);
+}
+
+
 
 int test_deserialize(std::string key) {
 	libff::bn128_pp::init_public_params();
-    	/*size_t expn = 2;
-	test_instances_t<G1<libff::bn128_pp>> group_elements =
-            libff::generate_group_elements<G1<libff::bn128_pp>>(10, 1 << expn);
-	std::ostringstream oss;
-    
-        std::string str = "";
-        std::copy(group_elements[0].begin(), group_elements[0].end()-1,
-                std::ostream_iterator<G1<bn128_pp>>(oss, " "));
 
-        // Now add the last element with no delimiter
-        oss << group_elements[0].back();
-	str = oss.str();
-        Aws::String e_str = Aws::Utils::StringUtils::URLEncode(str.c_str());
-	
-        //printf("Serialized: %s\n", key.c_str());
-	//return invocation_response::success(key.c_str(), "application/json");
-	Aws::String d_str = Aws::Utils::StringUtils::URLDecode(e_str.c_str());
-        */
 	std::istringstream is(key.c_str());
         std::vector<G1<bn128_pp>> myNumbers{ std::istream_iterator<G1<bn128_pp>>( is ), 
 			std::istream_iterator<G1<bn128_pp>>() };
-
-        //std::istream_iterator<G1<bn128_pp>>
-        //printf("after serializing: \t%lld\n", myNumbers.at(3));
 
 	return 3;
 }
 
 
-
+/*
 invocation_response my_handler(invocation_request const& request)
 {
    using namespace Aws::Utils::Json;
@@ -326,37 +321,60 @@ invocation_response my_handler(invocation_request const& request)
 
     auto v = json.View();
 
-   /* if (!v.ValueExists("s3bucket") || !v.ValueExists("s3key") || !v.GetObject("s3bucket").IsString() ||
-        !v.GetObject("s3key").IsString()) {
-        return invocation_response::failure("Missing input value s3bucket or s3key", "InvalidJSON");
-    }*/
-
     if (!v.ValueExists("groupelements")) {
         return invocation_response::failure("2Failed to parse input JSON", "InvalidJSON");
     }
 
     auto key1 = v.GetString("groupelements");
-    //auto key2 = v.GetString("key2");
 
-    /*AWS_LOGSTREAM_INFO(TAG, "Attempting to download file from s3://" << bucket << "/" << key);
-
-    Aws::String base64_encoded_file;
-    auto err = download_and_encode_file(client, bucket, key, base64_encoded_file);
-    if (!err.empty()) {
-        return invocation_response::failure(err, "DownloadFailure");
-    }*/
    Aws::String d_str = Aws::Utils::StringUtils::URLDecode(key1.c_str()); 
    int len = test_deserialize(d_str.c_str());
-   //int len = multi_exp_run(key1);
-   //Aws::String d_str = Aws::Utils::StringUtils::URLDecode(key1.c_str());
-   //return invocation_response::success(d_str.c_str(), "application/json");
 
-   return invocation_response::success(/*std::to_string(len).c_str()*/"hello", "application/json");
+   return invocation_response::success("hello", "application/json");
+}
+*/
+
+invocation_response multiexp_inner_handler(invocation_request const& request)
+{
+   using namespace Aws::Utils::Json;
+    JsonValue json((const Aws::String&)request.payload);
+    if (!json.WasParseSuccessful()) {
+        return invocation_response::failure("1Failed to parse input JSON", "InvalidJSON");
+    }
+
+    auto v = json.View();
+
+    if (!v.ValueExists("groupelements")) {
+        return invocation_response::failure("2Failed to parse input JSON", "InvalidJSON");
+    }
+
+    auto groupElements_str = v.GetString("groupelements");
+
+	if (!v.ValueExists("scalars")) {
+        return invocation_response::failure("3Failed to parse input JSON", "InvalidJSON");
+    }
+
+    auto scalars_str = v.GetString("scalars");
+
+    Aws::String ge_d_str = 
+		Aws::Utils::StringUtils::URLDecode(groupElements_str.c_str()); 
+	Aws::String sc_d_str = 
+		Aws::Utils::StringUtils::URLDecode(scalars_str.c_str()); 
+   
+    std::vector<G1<bn128_pp>> groupelements = 
+		deserializeToVec<G1<bn128_pp>>(ge_d_str.c_str());
+	std::vector<Fr<bn128_pp>> scalars = 
+		deserializeToVec<Fr<bn128_pp>>(sc_d_str.c_str());
+	std::string answer = 
+		invoke_multiexp_inner(groupelements, scalars);
+	deserialize<G1<bn128_pp>>("56");
+	serialize<G1<bn128_pp>>(groupelements.at(0));
+    return invocation_response::success(answer.c_str(), "application/json");
 }
 
 int main()
 {
-   run_handler(my_handler);
+   run_handler(multiexp_inner_handler);
    //multi_exp_run();
     
    return 0;

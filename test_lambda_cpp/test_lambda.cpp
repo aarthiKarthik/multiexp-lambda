@@ -134,6 +134,49 @@ void DeleteFunction(Aws::String functionName)
         << outcome.GetError().GetMessage() << "\n\n";
 }
 
+// Deserialize a string into a vector
+//
+template<typename T>
+std::vector<T> deserializeToVec(std::string s_vec) {
+	std::istringstream is(s_vec.c_str());
+        return std::vector<T>{ std::istream_iterator<T>( is ), 
+                        std::istream_iterator<T>() };
+}
+
+// Deserialize a string into a single element
+//
+template<typename T>
+T deserialize(std::string s_elem) {
+	T ret;
+	std::istringstream is(s_elem.c_str());
+    is >> ret;
+	return ret;
+}
+
+// Serialize a vector into a string
+//
+template<typename T> 
+std::string serializeVec(std::vector<T> vec) {
+	std::ostringstream oss;
+	std::string str = "";
+	std::copy(vec.begin(), vec.end()-1,
+                std::ostream_iterator<T>(oss, " "));
+
+    // Now add the last element with no delimiter
+    oss << vec.back();
+	return oss.str();
+}
+
+// Serialize a single element into a string
+//
+template<typename T> 
+std::string serialize(T elem) {
+	std::ostringstream oss;
+	std::string str = "";
+    oss << elem;
+	return oss.str();
+}
+
 void InvokeFunction(Aws::String functionName)
 {
     Aws::Lambda::Model::InvokeRequest invokeRequest;
@@ -158,69 +201,34 @@ void InvokeFunction(Aws::String functionName)
     std::string str = "";
     std::vector<G1<bn128_pp>> answers;
     printf("size of group elements: %d\n", group_elements.size());
-    for (size_t i = 0; i < group_elements.size(); i++) {
-        //std::ostringstream oss;
-
-        //for(size_t j=0; j<group_elements[i].size(); j++) {
-        //        printf("%d %lld ",j, group_elements[i].at(j));fflush(stdout);
-        //}
-        //printf("\n");
+    for (size_t i = 0; i < group_elements.size(); i++) 
+    {
         if (!group_elements[i].empty())
         {
-                //printf("before serializing: \t%lld\n", group_elements[i].at(2));
                 // Convert all but the last element to avoid a trailing ","
                 std::copy(group_elements[i].begin(), group_elements[i].end()-1,
                 std::ostream_iterator<G1<bn128_pp>>(oss, " "));
 
                 // Now add the last element with no delimiter
                 oss << group_elements[i].back();
-		//std::string str = oss.str();
                 if (i==0) {
-			for (int k=0;k<group_elements[i].size();k++)
-				printf("%lld ",group_elements[i].at(k));
-			std::cout << "\n";
-			str = oss.str();
-			Aws::String e_str = Aws::Utils::StringUtils::URLEncode(str.c_str());
-			jsonPayload.WithString("groupelements", e_str);//oss.str());
-				//Aws::Utils::StringUtils::to_string<const char*>(str.c_str()));
-			//printf("serialized %s\n", str.c_str());
-			std::cout << "serialized: " << str.c_str() << "\n";
-			//std::cout << "encoded   : " << e_str << "\n";
-			//std::cout << "decoded   : " << 
-			//	Aws::Utils::StringUtils::URLDecode(e_str.c_str()) << "\n";
-			// Testing code to check serial and deserial
-			//std::stringstream is(str.c_str());
-        		//std::vector<G1<bn128_pp>> myNumbers{ 
-			//	std::istream_iterator<G1<bn128_pp>>( is ), 
-        	        //        std::istream_iterator<G1<bn128_pp>>() };
-			//for (int k=0;k<myNumbers.size();k++)
-                        //        printf("%lld ", myNumbers.at(k));
-                        //std::cout << "\n";
-			
-		}
-	}
+                for (int k=0;k<group_elements[i].size();k++)
+                    printf("%lld ",group_elements[i].at(k));
+                std::cout << "\n";
+                str = oss.str();
+                Aws::String e_str = Aws::Utils::StringUtils::URLEncode(str.c_str());
+                jsonPayload.WithString("groupelements", e_str);//oss.str());
+                std::cout << "serialized: " << str.c_str() << "\n";
+            }
+	    }
     }
-    //Aws::Utils::Json::JsonValue jsonPayload;
-    //jsonPayload.WithString("key1", "value1");
-    //jsonPayload.WithString("key2", "value2");
-    //jsonPayload.WithString("key3", "value3");
     *payload << jsonPayload.View().WriteReadable();
-    //auto sstream = std::make_shared<std::stringstream>();
-    //sstream->write(str.c_str(), str.size());
-    //...
-    //invokeRequest.SetBody(sstream);
 
     invokeRequest.SetBody(payload);
     invokeRequest.SetContentType("application/text");
     auto outcome = m_client->Invoke(invokeRequest);
     auto &result = outcome.GetResult();
 
-   // Decode the result header to see requested log information 
-        //auto byteLogResult = Aws::Utils::HashingUtils::Base64Decode(result.GetLogResult());
-        //Aws::StringStream logResult;
-        //for (unsigned i = 0; i < byteLogResult.GetLength(); i++)
-        //    logResult << byteLogResult.GetItem(i);
-        //std::cout << "Log result header:\n" << logResult.str() << "\n\n";
     printf("Outcome is success %d \n", outcome.IsSuccess());
     if (outcome.IsSuccess())
     {
@@ -240,6 +248,76 @@ void InvokeFunction(Aws::String functionName)
         std::cout << "Log result header:\n" << logResult.str() << "\n\n";
         */
     }
+}
+
+Aws::String InvokeFunction(Aws::String functionName, Aws::Utils::Json::JsonValue jsonBody)
+{
+    Aws::Lambda::Model::InvokeRequest invokeRequest;
+    invokeRequest.SetFunctionName(functionName);
+    invokeRequest.SetInvocationType(Aws::Lambda::Model::InvocationType::RequestResponse);
+    invokeRequest.SetLogType(Aws::Lambda::Model::LogType::Tail);
+    std::shared_ptr<Aws::IOStream> payload = Aws::MakeShared<Aws::StringStream>("");
+
+    *payload << jsonBody.View().WriteReadable();
+
+    invokeRequest.SetBody(payload);
+    invokeRequest.SetContentType("application/text");
+    auto outcome = m_client->Invoke(invokeRequest);
+    auto &result = outcome.GetResult();
+
+    printf("Outcome is success %d \n", outcome.IsSuccess());
+    if (outcome.IsSuccess())
+    {
+        // Lambda function result (key1 value)
+        Aws::IOStream& payload = result.GetPayload();
+        Aws::String functionResult;
+        std::getline(payload, functionResult);
+        //std::cout << "Lambda result:\n" << functionResult << "\n\n";
+        return functionResult;
+        /*// Decode the result header to see requested log information 
+        auto byteLogResult = Aws::Utils::HashingUtils::Base64Decode(result.GetLogResult());
+        Aws::StringStream logResult;
+        for (unsigned i = 0; i < byteLogResult.GetLength(); i++)
+            logResult << byteLogResult.GetItem(i);
+        std::cout << "Log result header:\n" << logResult.str() << "\n\n";
+        */
+    }
+    return Aws::String("");
+}
+
+
+void InvokeMultiExpInner()
+{   
+    libff::bn128_pp::init_public_params();
+    size_t expn = 2;
+
+    test_instances_t<G1<libff::bn128_pp>> group_elements =
+            libff::generate_group_elements<G1<libff::bn128_pp>>(10, 1 << expn);
+    test_instances_t<Fr<libff::bn128_pp>> scalars =
+            libff::generate_scalars<Fr<libff::bn128_pp>>(10, 1 << expn);
+
+
+    Aws::Utils::Json::JsonValue jsonPayload;
+    std::vector<G1<bn128_pp>> answers;
+    printf("size of group elements: %d\n", group_elements.size());
+    for (size_t i = 0; i < group_elements.size(); i++) 
+    {
+        std::string ge_ser = serializeVec<G1<bn128_pp>>(group_elements[i]);
+        Aws::String ge_str = Aws::Utils::StringUtils::URLEncode(ge_ser.c_str());
+        jsonPayload.WithString("groupelements", ge_str);
+
+        std::string sc_ser = serializeVec<Fr<bn128_pp>>(scalars[i]);
+        Aws::String sc_str = Aws::Utils::StringUtils::URLEncode(sc_ser.c_str());
+        jsonPayload.WithString("scalars", sc_str);
+        
+        Aws::String answer = InvokeFunction("multiexp", jsonPayload);
+        answers.push_back(deserialize<G1<bn128_pp>>(answer.c_str()));
+    }
+
+    //Output
+    for(int i=0; i<answers.size(); i++)
+        printf("%lld ", answers[i]);
+    printf("\n");
 }
 
 void ListFunctions()
@@ -313,10 +391,10 @@ int main(int argc, char **argv)
 
         //ListFunctions();
 
-        InvokeFunction(functionName);
-	InvokeFunction(functionName);
-	InvokeFunction(functionName);
-
+        //InvokeFunction(functionName);
+	    //InvokeFunction(functionName);
+	    //InvokeFunction(functionName);
+        InvokeMultiExpInner();
         //DeleteFunction(functionName);
 
         m_client = nullptr;
