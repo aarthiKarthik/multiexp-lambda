@@ -22,6 +22,9 @@ specific language governing permissions and limitations under the License.
 #include <aws/lambda/model/DeleteFunctionRequest.h>
 #include <aws/lambda/model/InvokeRequest.h>
 #include <aws/lambda/model/ListFunctionsRequest.h>
+#include <aws/states/SFNClient.h>
+#include <aws/states/model/ListStateMachinesRequest.h>
+#include <aws/states/model/ListStateMachinesResult.h>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -37,6 +40,7 @@ specific language governing permissions and limitations under the License.
 
 
 using namespace libff;
+using namespace Aws::Lambda;
 
 namespace libff {
 
@@ -86,6 +90,7 @@ test_instances_t<FieldT> generate_scalars(size_t count, size_t size)
 static const char* ALLOCATION_TAG = "helloLambdaWorld";
 
 static std::shared_ptr<Aws::Lambda::LambdaClient> m_client;
+static std::shared_ptr<Aws::SFN::SFNClient> m_statesClient;
 
 static void CreateFunction(Aws::String functionName, Aws::String handler, 
     Aws::Lambda::Model::Runtime runtime, Aws::String roleARN, Aws::String zipFile)
@@ -285,6 +290,70 @@ void InvokeFunction(Aws::String functionName)
     }
 }
 
+void lambdaCallback(const LambdaClient* client, 
+                    const Model::InvokeRequest& req, 
+                    const Model::InvokeOutcome& outcome, 
+                    const std::shared_ptr<const Aws::Client::AsyncCallerContext>& context)
+{
+    //auto const& result = outcome.GetResult();
+
+    //printf("Outcome is success %d \n", outcome.IsSuccess());
+    //if (outcome.IsSuccess())
+    //{
+        printf("hi\n");
+        /*
+        // Lambda function result (key1 value)
+        const Aws::IOStream& payload = result.GetPayload();
+        Aws::String functionResult;
+        std::getline(payload, functionResult);
+        //std::cout << "Lambda result:\n" << functionResult << "\n\n";
+        //return functionResult;
+        auto answer = deserialize<G1<libff::bn128_pp>>(functionResult.c_str());
+        printf("%lld ", answer);
+        */
+    //}
+}
+
+Aws::String InvokeFunctionAsync(Aws::String functionName, Aws::Utils::Json::JsonValue jsonBody)
+{
+    Aws::Lambda::Model::InvokeRequest invokeRequest;
+    invokeRequest.SetFunctionName(functionName);
+    invokeRequest.SetInvocationType(Aws::Lambda::Model::InvocationType::Event);//::RequestResponse);
+    //invokeRequest.SetLogType(Aws::Lambda::Model::LogType::Tail);
+    std::shared_ptr<Aws::IOStream> payload = Aws::MakeShared<Aws::StringStream>("");
+
+    *payload << jsonBody.View().WriteReadable();
+
+    //invokeRequest.SetBody(payload);
+    //invokeRequest.SetContentType("application/text");
+    printf("invoking\n");
+    m_client->InvokeAsync(invokeRequest, lambdaCallback);
+    //auto outcome = m_client->Invoke(invokeRequest);
+    printf("done\n");
+    
+    /*
+    auto &result = outcome.GetResult();
+
+    printf("Outcome is success %d \n", outcome.IsSuccess());
+    if (outcome.IsSuccess())
+    {
+       // Lambda function result (key1 value)
+       Aws::IOStream& payload = result.GetPayload();
+       Aws::String functionResult;
+       std::getline(payload, functionResult);
+        std::cout << "Lambda result:\n" << functionResult << "\n\n";
+       return functionResult;
+        // Decode the result header to see requested log information 
+        auto byteLogResult = Aws::Utils::HashingUtils::Base64Decode(result.GetLogResult());
+        Aws::StringStream logResult;
+        for (unsigned i = 0; i < byteLogResult.GetLength(); i++)
+            logResult << byteLogResult.GetItem(i);
+        std::cout << "Log result header:\n" << logResult.str() << "\n\n";
+        
+    }*/
+    return "";
+}
+
 Aws::String InvokeFunction(Aws::String functionName, Aws::Utils::Json::JsonValue jsonBody)
 {
     Aws::Lambda::Model::InvokeRequest invokeRequest;
@@ -297,18 +366,23 @@ Aws::String InvokeFunction(Aws::String functionName, Aws::Utils::Json::JsonValue
 
     invokeRequest.SetBody(payload);
     invokeRequest.SetContentType("application/text");
+    //printf("invoking\n");
     auto outcome = m_client->Invoke(invokeRequest);
+    //m_client->InvokeAsync(invokeRequest, lambdaCallback);
+    //printf("done\n");
     auto &result = outcome.GetResult();
 
-    printf("Outcome is success %d \n", outcome.IsSuccess());
+    printf("Outcome is success %d with ret code: %d \n", 
+                outcome.IsSuccess(),
+                outcome.GetResult().GetStatusCode());
     if (outcome.IsSuccess())
     {
-        // Lambda function result (key1 value)
-        Aws::IOStream& payload = result.GetPayload();
-        Aws::String functionResult;
-        std::getline(payload, functionResult);
-        //std::cout << "Lambda result:\n" << functionResult << "\n\n";
-        return functionResult;
+       // Lambda function result (key1 value)
+       Aws::IOStream& payload = result.GetPayload();
+       Aws::String functionResult;
+       std::getline(payload, functionResult);
+       //std::cout << "Lambda result:\n" << functionResult << "\n\n";
+       return functionResult;
         /*// Decode the result header to see requested log information 
         auto byteLogResult = Aws::Utils::HashingUtils::Base64Decode(result.GetLogResult());
         Aws::StringStream logResult;
@@ -317,9 +391,73 @@ Aws::String InvokeFunction(Aws::String functionName, Aws::Utils::Json::JsonValue
         std::cout << "Log result header:\n" << logResult.str() << "\n\n";
         */
     }
-    return Aws::String("");
+    return "";
 }
 
+void InvokeMultiExpInner2()
+{   
+    libff::bn128_pp::init_public_params();
+    size_t expn = 2;
+
+    test_instances_t<G1<libff::bn128_pp>> group_elements =
+            libff::generate_group_elements<G1<libff::bn128_pp>>(3, 1 << expn);
+    test_instances_t<Fr<libff::bn128_pp>> scalars =
+            libff::generate_scalars<Fr<libff::bn128_pp>>(3, 1 << expn);
+
+
+    Aws::Utils::Json::JsonValue jsonPayload;
+    std::vector<G1<bn128_pp>> answers;
+    printf("size of group elements: %d\n", group_elements.size());
+    
+    for (size_t i = 0; i < group_elements.size(); i++) 
+    {
+        size_t chunks = group_elements[i].size() / 2;
+        // Chunker
+        std::vector<G1<libff::bn128_pp>>::const_iterator vec_start = group_elements[i].cbegin();
+        std::vector<G1<libff::bn128_pp>>::const_iterator vec_end = group_elements[i].cend();
+        std::vector<Fr<libff::bn128_pp>>::const_iterator scalar_start = scalars[i].cbegin();
+        std::vector<Fr<libff::bn128_pp>>::const_iterator scalar_end = scalars[i].cend();
+        const size_t total = vec_end - vec_start;
+
+        const size_t one = total/chunks;
+
+        std::vector<G1<libff::bn128_pp>> partial(chunks, G1<libff::bn128_pp>::zero());
+
+        for (size_t j = 0; j < chunks; ++j)
+        {
+            printf("%d\n", j);
+            std::vector<G1<libff::bn128_pp>> ge{vec_start + j*one,
+                (j == chunks-1 ? vec_end : vec_start + (j+1)*one)};
+            std::vector<Fr<libff::bn128_pp>> sc{scalar_start + j*one,
+                (j == chunks-1 ? scalar_end : scalar_start + (j+1)*one)};
+            std::string ge_ser = serializeVec<G1<libff::bn128_pp>>(ge);
+            Aws::String ge_str = Aws::Utils::StringUtils::URLEncode(ge_ser.c_str());
+            printf("%s\n%s\n", ge_ser.c_str(), ge_str.c_str());
+            jsonPayload.WithString("groupelements", ge_str);
+
+            std::string sc_ser = serializeFieldVec<Fr<libff::bn128_pp>>(sc);
+            Aws::String sc_str = Aws::Utils::StringUtils::URLEncode(sc_ser.c_str());
+            jsonPayload.WithString("scalars", sc_str);
+            Aws::String str("multiexp");
+            /*Aws::String answer = */InvokeFunction(str, jsonPayload);
+            //partial[j] = deserialize<G1<libff::bn128_pp>>(answer.c_str());
+        }
+
+        //G1<libff::bn128_pp> final = G1<libff::bn128_pp>::zero();
+
+        //for (size_t j = 0; j < chunks; ++j)
+        //{
+        //    final = final + partial[j];
+        //}
+        
+        //answers.push_back(final);
+    }
+
+    //Output
+    // for(int i=0; i<answers.size(); i++)
+    //    printf("%lld ", answers[i]);
+    // printf("\n");
+}
 
 void InvokeMultiExpInner()
 {   
@@ -351,7 +489,7 @@ void InvokeMultiExpInner()
 
     //Output
     for(int i=0; i<answers.size(); i++)
-        printf("%lld ", answers[i]);
+       printf("%lld ", answers[i]);
     printf("\n");
 }
 
@@ -363,6 +501,18 @@ void ListFunctions()
     std::cout << functions.size() << " function(s):" << std::endl;
     for(const auto& item : functions)
         std::cout << item.GetFunctionName() << std::endl;
+    std::cout << std::endl;
+}
+
+void InvokeSfn()
+{
+    // Model::ListStateMachinesOutcome ListStateMachines(const Model::ListStateMachinesRequest& request)
+    Aws::SFN::Model::ListStateMachinesRequest mcrequest;
+    auto outcome = m_statesClient->ListStateMachines(mcrequest);
+    auto machines = outcome.GetResult().GetStateMachines();
+    std::cout << machines.size() << " machine(s):" << std::endl;
+    for(const auto& item : machines)
+        std::cout << item.GetName() << std::endl;
     std::cout << std::endl;
 }
 
@@ -407,6 +557,7 @@ int main(int argc, char **argv)
                     "create_function_"));
 
         const Aws::String functionName("multiexp");//argv[1]);
+
         //const Aws::String functionHandler(argv[2]);
         //const Aws::Lambda::Model::Runtime functionRuntime = 
         //    Aws::Lambda::Model::RuntimeMapper::GetRuntimeForName(Aws::String(argv[3]));
@@ -420,6 +571,8 @@ int main(int argc, char **argv)
             clientConfig.region = region;
         m_client = Aws::MakeShared<Aws::Lambda::LambdaClient>(ALLOCATION_TAG, 
                                                               clientConfig);
+        m_statesClient = Aws::MakeShared<Aws::SFN::SFNClient>(ALLOCATION_TAG, 
+                                                              clientConfig);                                                    
 
         //CreateFunction(functionName, functionHandler, functionRuntime,
                        //functionRoleARN, functionZipFile);
@@ -429,7 +582,8 @@ int main(int argc, char **argv)
         //InvokeFunction(functionName);
 	    //InvokeFunction(functionName);
 	    //InvokeFunction(functionName);
-        InvokeMultiExpInner();
+        //InvokeMultiExpInner();
+        InvokeSfn();
         //DeleteFunction(functionName);
 
         m_client = nullptr;
